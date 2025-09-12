@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Green Cat Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body class="bg-gray-900 text-white font-mono">
+    <div class="container mx-auto p-6">
+        <h1 class="text-4xl font-bold text-center text-green-400 mb-8">Green Cat Dashboard</h1>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-semibold text-green-400 mb-4">IP Information</h2>
+                {% if ip_data.get('error') %}
+                    <p class="text-red-400">Error: {{ ip_data.error }}</p>
+                {% else %}
+                    <p><strong>IP Address:</strong> {{ ip_data.ip or 'N/A' }}</p>
+                    <p><strong>ASN:</strong> {{ ip_data.asn or 'N/A' }}</p>
+                    <p><strong>ISP:</strong> {{ ip_data.org or 'N/A' }}</p>
+                    <p><strong>City:</strong> {{ ip_data.city or 'N/A' }}</p>
+                    <p><strong>Country:</strong> {{ ip_data.country_name or 'N/A' }}</p>
+                    <p><strong>Latitude:</strong> {{ ip_data.latitude or 'N/A' }}</p>
+                    <p><strong>Longitude:</strong> {{ ip_data.longitude or 'N/A' }}</p>
+                {% endif %}
+            </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-semibold text-green-400 mb-4">User Agent Information</h2>
+                <p><strong>User Agent String:</strong> <span id="ua-string">N/A</span></p>
+                <p><strong>Browser:</strong> <span id="browser">N/A</span></p>
+                <p><strong>Operating System:</strong> <span id="os">N/A</span></p>
+                <p><strong>Device:</strong> <span id="device">N/A</span></p>
+            </div>
+        </div>
+        <div class="mt-8">
+            <h2 class="text-2xl font-semibold text-green-400 mb-4">Your Location</h2>
+            <div id="map" class="h-96 bg-gray-800 rounded-lg"></div>
+        </div>
+        <div class="mt-8 bg-gray-800 p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-semibold text-green-400 mb-4">Visitor Statistics</h2>
+            {% if stats.total_visitors > 0 %}
+                <p>Total Visitors: {{ stats.total_visitors }}</p>
+                <h3 class="text-xl font-semibold text-green-300 mt-4">By Country</h3>
+                <ul class="list-disc pl-6">
+                    {% for stat in stats.country %}
+                        <li>{{ stat.country }}: {{ stat.count }} visitors ({{ stat.percentage }}%)</li>
+                    {% endfor %}
+                </ul>
+                <h3 class="text-xl font-semibold text-green-300 mt-4">By Browser</h3>
+                <ul class="list-disc pl-6">
+                    {% for stat in stats.browser %}
+                        <li>{{ stat.browser }}: {{ stat.count }} visitors ({{ stat.percentage }}%)</li>
+                    {% endfor %}
+                </ul>
+                <h3 class="text-xl font-semibold text-green-300 mt-4">By Operating System</h3>
+                <ul class="list-disc pl-6">
+                    {% for stat in stats.os %}
+                        <li>{{ stat.os }}: {{ stat.count }} visitors ({{ stat.percentage }}%)</li>
+                    {% endfor %}
+                </ul>
+                <h3 class="text-xl font-semibold text-green-300 mt-4">By Device</h3>
+                <ul class="list-disc pl-6">
+                    {% for stat in stats.device %}
+                        <li>{{ stat.device }}: {{ stat.count }} visitors ({{ stat.percentage }}%)</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No visitor data yet.</p>
+            {% endif %}
+        </div>
+    </div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/ua-parser-js@1.0.36/dist/ua-parser.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("JavaScript is running!");
+            function parseUserAgent(ua) {
+                let browser = 'Unknown';
+                let os = 'Unknown';
+                let device = 'Unknown';
+                if (ua.includes('Chrome')) browser = 'Chrome';
+                else if (ua.includes('Firefox')) browser = 'Firefox';
+                else if (ua.includes('Safari')) browser = 'Safari';
+                else if (ua.includes('Edge')) browser = 'Edge';
+                if (ua.includes('Linux')) os = 'Linux';
+                else if (ua.includes('Windows')) os = 'Windows';
+                else if (ua.includes('Mac OS')) os = 'Mac OS';
+                else if (ua.includes('Android')) os = 'Android';
+                else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+                if (ua.includes('Mobile') || ua.includes('Android') || ua.includes('iPhone')) device = 'Mobile';
+                else device = 'Desktop'; // Default to Desktop for non-mobile
+                return { browser, os, device };
+            }
+            try {
+                const ua = navigator.userAgent || 'N/A';
+                document.getElementById('ua-string').textContent = ua;
+                let browser, os, device;
+
+                if (typeof UAParser === 'undefined') {
+                    throw new Error("UAParser library not loaded");
+                }
+                const parser = new UAParser();
+                const result = parser.getResult();
+                console.log("User Agent Result:", result);
+                browser = `${result.browser.name || 'Unknown'} ${result.browser.version || ''}`;
+                os = `${result.os.name || 'Unknown'} ${result.os.version || ''}`;
+                device = result.device.model || result.device.type || 'Desktop'; // Fallback to Desktop
+
+                document.getElementById('browser').textContent = browser;
+                document.getElementById('os').textContent = os;
+                document.getElementById('device').textContent = device;
+                fetch('/log-user-agent', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_agent: ua, browser, os, device })
+                }).then(response => response.json())
+                  .then(data => console.log("User Agent logged:", data))
+                  .catch(error => console.error("Error logging User Agent:", error));
+            } catch (e) {
+                console.error("JavaScript Error:", e.message);
+                const ua = navigator.userAgent || 'N/A';
+                const parsed = parseUserAgent(ua);
+                document.getElementById('browser').textContent = parsed.browser;
+                document.getElementById('os').textContent = parsed.os;
+                document.getElementById('device').textContent = parsed.device;
+                fetch('/log-user-agent', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_agent: ua,
+                        browser: parsed.browser,
+                        os: parsed.os,
+                        device: parsed.device
+                    })
+                }).then(response => response.json())
+                  .then(data => console.log("User Agent logged:", data))
+                  .catch(error => console.error("Error logging User Agent:", error));
+            }
+            try {
+                const lat = {{ ip_data.latitude | default(0) }};
+                const lon = {{ ip_data.longitude | default(0) }};
+                if (lat === 0 || lon === 0) {
+                    throw new Error("Invalid coordinates");
+                }
+                const map = L.map('map').setView([lat, lon], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                }).addTo(map);
+                L.marker([lat, lon]).addTo(map)
+                    .bindPopup('Your approximate location: {{ ip_data.city or "Unknown" }}, {{ ip_data.country_name or "Unknown" }}')
+                    .openPopup();
+            } catch (e) {
+                console.error("Map Error:", e.message);
+                document.getElementById('map').innerHTML = '<p class="text-red-400 p-4">Error: Could not load map</p>';
+            }
+        });
+    </script>
+</body>
+</html>
